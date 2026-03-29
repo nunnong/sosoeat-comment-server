@@ -11,7 +11,7 @@ datasource db {
 model Meeting {
   id        Int       @id
   hostId    Int
-  teamId    Int
+  teamId    String    
   createdAt DateTime  @default(now())
 
   comments  Comment[]
