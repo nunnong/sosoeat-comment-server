@@ -3,7 +3,43 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const verifyMember = require('../middlewares/verifyMember');
 
-// 댓글 수정
+/**
+ * @swagger
+ * /comments/{commentId}:
+ *   patch:
+ *     summary: 댓글 수정 (본인만)
+ *     tags: [Comments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - content
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 댓글 수정 성공
+ *       401:
+ *         description: 인증 실패
+ *       403:
+ *         description: 본인 댓글 아님
+ *       404:
+ *         description: 댓글 없음
+ *       500:
+ *         description: 서버 오류
+ */
 router.patch('/:commentId', verifyMember, async (req, res) => {
   const { commentId } = req.params;
   const { content } = req.body;
@@ -32,7 +68,32 @@ router.patch('/:commentId', verifyMember, async (req, res) => {
   }
 });
 
-// 댓글 삭제 (소프트 삭제)
+/**
+ * @swagger
+ * /comments/{commentId}:
+ *   delete:
+ *     summary: 댓글 삭제 (본인만, 소프트 삭제)
+ *     tags: [Comments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: 댓글 삭제 성공
+ *       401:
+ *         description: 인증 실패
+ *       403:
+ *         description: 본인 댓글 아님
+ *       404:
+ *         description: 댓글 없음
+ *       500:
+ *         description: 서버 오류
+ */
 router.delete('/:commentId', verifyMember, async (req, res) => {
   const { commentId } = req.params;
 

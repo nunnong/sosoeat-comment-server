@@ -110,7 +110,7 @@ NEXT_APP_URL=        # Next.js 서버 URL (CORS 허용 대상)
 
 ```env
 # Railway 배포 후 발급된 URL로 고정 (서버 전용, NEXT_PUBLIC 사용 금지)
-COMMENT_API_URL=(확정시 업데이트 예정)
+COMMENT_API_URL=https://sosoeat-comment.up.railway.app
 ```
 
 ### 인증이 필요 없는 API (댓글 조회)
