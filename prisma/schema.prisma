@@ -11,7 +11,7 @@ datasource db {
 model Meeting {
   id        Int       @id
   hostId    Int
-  teamId    String    
+  teamId    String
   createdAt DateTime  @default(now())
 
   comments  Comment[]
@@ -23,7 +23,8 @@ model User {
   profileUrl String?
   createdAt  DateTime  @default(now())
 
-  comments   Comment[]
+  comments      Comment[]
+  commentLikes  CommentLike[]
 }
 
 model Comment {
@@ -36,8 +37,20 @@ model Comment {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent    Comment?  @relation("replies", fields: [parentId], references: [id])
-  replies   Comment[] @relation("replies")
+  meeting   Meeting      @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Comment?     @relation("replies", fields: [parentId], references: [id])
+  replies   Comment[]    @relation("replies")
+  likes     CommentLike[]
+}
+
+model CommentLike {
+  commentId Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
 }
