@@ -135,7 +135,7 @@ router.get('/:meetingId/comments/count', async (req, res) => {
  *         required: false
  *         schema:
  *           type: string
- *         description: Bearer 토큰 (있으면 isLiked/isHost 포함, 없으면 false)
+ *         description: Bearer 토큰 (있으면 isLiked/isHostComment/isMine 포함, 없으면 false)
  *     responses:
  *       200:
  *         description: 댓글 목록 조회 성공
@@ -148,25 +148,31 @@ router.get('/:meetingId/comments/count', async (req, res) => {
  *                 properties:
  *                   id:
  *                     type: integer
+ *                   parentId:
+ *                     type: integer
+ *                     nullable: true
  *                   content:
  *                     type: string
  *                   isDeleted:
  *                     type: boolean
- *                   likeCount:
- *                     type: integer
- *                   isLiked:
- *                     type: boolean
- *                   isHost:
- *                     type: boolean
- *                   user:
+ *                   createdAt:
+ *                     type: string
+ *                   author:
  *                     type: object
  *                     properties:
- *                       id:
- *                         type: integer
  *                       nickname:
  *                         type: string
  *                       profileUrl:
  *                         type: string
+ *                         nullable: true
+ *                   likeCount:
+ *                     type: integer
+ *                   isLiked:
+ *                     type: boolean
+ *                   isHostComment:
+ *                     type: boolean
+ *                   isMine:
+ *                     type: boolean
  *                   replies:
  *                     type: array
  *       500:
@@ -228,19 +234,34 @@ router.get('/:meetingId/comments', async (req, res) => {
     ]);
 
     const result = comments.map((comment) => ({
-      ...comment,
+      id: comment.id,
+      parentId: comment.parentId,
+      content: comment.content,
+      isDeleted: comment.isDeleted,
+      createdAt: comment.createdAt,
+      author: {
+        nickname: comment.user.nickname,
+        profileUrl: comment.user.profileUrl,
+      },
       likeCount: comment._count.likes,
       isLiked: currentUserId ? comment.likes.length > 0 : false,
-      isHost: meeting ? comment.userId === meeting.hostId : false,
-      likes: undefined,
-      _count: undefined,
+      isHostComment: meeting ? comment.userId === meeting.hostId : false,
+      isMine: currentUserId ? comment.userId === currentUserId : false,
       replies: comment.replies.map((reply) => ({
-        ...reply,
+        id: reply.id,
+        parentId: reply.parentId,
+        content: reply.content,
+        isDeleted: reply.isDeleted,
+        createdAt: reply.createdAt,
+        author: {
+          nickname: reply.user.nickname,
+          profileUrl: reply.user.profileUrl,
+        },
         likeCount: reply._count.likes,
         isLiked: currentUserId ? reply.likes.length > 0 : false,
-        isHost: meeting ? reply.userId === meeting.hostId : false,
-        likes: undefined,
-        _count: undefined,
+        isHostComment: meeting ? reply.userId === meeting.hostId : false,
+        isMine: currentUserId ? reply.userId === currentUserId : false,
+        replies: [],
       })),
     }));
 
