@@ -1,4 +1,5 @@
 require('dotenv').config();
+const prisma = require('../lib/prisma');
 
 const verifyMember = async (req, res, next) => {
   const token = req.headers.authorization;
@@ -20,6 +21,21 @@ const verifyMember = async (req, res, next) => {
     }
 
     const user = await response.json();
+
+    // User upsert (없으면 insert, 있으면 nickname/profileUrl 업데이트)
+    await prisma.user.upsert({
+      where: { id: user.id },
+      update: {
+        nickname: user.name,
+        profileUrl: user.image,
+      },
+      create: {
+        id: user.id,
+        nickname: user.name,
+        profileUrl: user.image,
+      },
+    });
+
     req.user = user;
     next();
   } catch (e) {

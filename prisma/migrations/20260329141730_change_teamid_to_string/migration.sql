@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Meeting" ALTER COLUMN "teamId" SET DATA TYPE TEXT;

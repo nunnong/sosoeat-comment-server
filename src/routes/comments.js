@@ -121,4 +121,114 @@ router.delete('/:commentId', verifyMember, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /comments/{commentId}/likes:
+ *   post:
+ *     summary: 댓글 좋아요
+ *     tags: [Likes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       201:
+ *         description: 좋아요 성공
+ *       200:
+ *         description: 이미 좋아요한 댓글
+ *       401:
+ *         description: 인증 실패
+ *       500:
+ *         description: 서버 오류
+ */
+router.post('/:commentId/likes', verifyMember, async (req, res) => {
+  const { commentId } = req.params;
+
+  try {
+    const existing = await prisma.commentLike.findUnique({
+      where: {
+        commentId_userId: {
+          commentId: Number(commentId),
+          userId: req.user.id,
+        },
+      },
+    });
+
+    if (existing) {
+      return res.status(200).json({ message: '이미 좋아요한 댓글입니다.' });
+    }
+
+    const like = await prisma.commentLike.create({
+      data: {
+        commentId: Number(commentId),
+        userId: req.user.id,
+      },
+    });
+    res.status(201).json(like);
+  } catch (e) {
+    console.error('좋아요 에러:', e);
+    res.status(500).json({ message: '서버 오류' });
+  }
+});
+
+/**
+ * @swagger
+ * /comments/{commentId}/likes:
+ *   delete:
+ *     summary: 댓글 좋아요 취소
+ *     tags: [Likes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: commentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: 좋아요 취소 성공
+ *       404:
+ *         description: 좋아요 기록 없음
+ *       401:
+ *         description: 인증 실패
+ *       500:
+ *         description: 서버 오류
+ */
+router.delete('/:commentId/likes', verifyMember, async (req, res) => {
+  const { commentId } = req.params;
+
+  try {
+    const existing = await prisma.commentLike.findUnique({
+      where: {
+        commentId_userId: {
+          commentId: Number(commentId),
+          userId: req.user.id,
+        },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ message: '좋아요 기록이 없습니다.' });
+    }
+
+    await prisma.commentLike.delete({
+      where: {
+        commentId_userId: {
+          commentId: Number(commentId),
+          userId: req.user.id,
+        },
+      },
+    });
+    res.status(200).json({ message: '좋아요 취소 완료' });
+  } catch (e) {
+    console.error('좋아요 취소 에러:', e);
+    res.status(500).json({ message: '서버 오류' });
+  }
+});
+
 module.exports = router;
