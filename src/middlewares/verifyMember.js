@@ -10,7 +10,7 @@ const verifyMember = async (req, res, next) => {
 
   try {
     const response = await fetch(
-      `${process.env.MAIN_API_URL}/teams/${process.env.TEAM_ID}/users/me`,
+      `${process.env.MAIN_API_URL}/${process.env.TEAM_ID}/users/me`,
       {
         headers: { Authorization: token },
       }
