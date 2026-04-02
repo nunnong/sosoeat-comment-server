@@ -65,12 +65,17 @@ router.get('/:meetingId/comments', async (req, res) => {
         `${process.env.MAIN_API_URL}/${process.env.TEAM_ID}/users/me`,
         { headers: { Authorization: token } }
       );
+      console.log('users/me status:', response.status);
       if (response.ok) {
         const user = await response.json();
+        console.log('currentUserId:', user.id);
         currentUserId = user.id;
+      } else {
+        const errBody = await response.text();
+        console.log('users/me 에러 body:', errBody);
       }
     } catch (e) {
-      // 토큰 검증 실패해도 댓글 조회는 계속 진행
+      console.error('users/me fetch 실패:', e);
     }
   }
 
@@ -95,14 +100,12 @@ router.get('/:meetingId/comments', async (req, res) => {
                 select: { id: true, nickname: true, profileUrl: true },
               },
               _count: { select: { likes: true } },
-              // 로그인한 경우에만 likes 포함
               ...(currentUserId && {
                 likes: { where: { userId: currentUserId }, select: { userId: true } },
               }),
             },
           },
           _count: { select: { likes: true } },
-          // 로그인한 경우에만 likes 포함
           ...(currentUserId && {
             likes: { where: { userId: currentUserId }, select: { userId: true } },
           }),
