@@ -149,24 +149,23 @@ router.post('/:commentId/likes', verifyMember, async (req, res) => {
   const { commentId } = req.params;
 
   try {
-    const existing = await prisma.commentLike.findUnique({
-      where: {
-        commentId_userId: {
-          commentId: Number(commentId),
-          userId: req.user.id,
-        },
-      },
+    const { commentId: cid, userId: uid } = {
+      commentId: Number(commentId),
+      userId: req.user.id,
+    };
+
+    const existingBefore = await prisma.commentLike.findUnique({
+      where: { commentId_userId: { commentId: cid, userId: uid } },
     });
 
-    if (existing) {
+    if (existingBefore) {
       return res.status(200).json({ message: '이미 좋아요한 댓글입니다.' });
     }
 
-    const like = await prisma.commentLike.create({
-      data: {
-        commentId: Number(commentId),
-        userId: req.user.id,
-      },
+    const like = await prisma.commentLike.upsert({
+      where: { commentId_userId: { commentId: cid, userId: uid } },
+      create: { commentId: cid, userId: uid },
+      update: {},
     });
     res.status(201).json(like);
   } catch (e) {
