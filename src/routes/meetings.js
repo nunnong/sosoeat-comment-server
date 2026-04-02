@@ -55,6 +55,7 @@ router.get('/:meetingId/comments/count', async (req, res) => {
 
 router.get('/:meetingId/comments', async (req, res) => {
   const { meetingId } = req.params;
+  console.log('meetingId 파라미터:', meetingId, '→ Number:', Number(meetingId));
 
   let currentUserId = null;
   const token = req.headers.authorization;
