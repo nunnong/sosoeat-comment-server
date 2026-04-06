@@ -144,8 +144,8 @@ Supabase 내부에서 SQL(PostgreSQL 함수)로 작성하는 것보다,
 | POST | /meetings/:meetingId/comments | 댓글/대댓글 작성 |
 | PATCH | /comments/:commentId | 댓글 수정 (본인만) |
 | DELETE | /comments/:commentId | 댓글 삭제 (본인만, 소프트 삭제) |
-| POST | /comments/:commentId/likes | 댓글 좋아요 (미구현) |
-| DELETE | /comments/:commentId/likes | 댓글 좋아요 취소 (미구현) |
+| POST | /comments/:commentId/likes | 댓글 좋아요 |
+| DELETE | /comments/:commentId/likes | 댓글 좋아요 취소 |
 
 ---
 

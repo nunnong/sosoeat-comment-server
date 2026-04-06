@@ -87,23 +87,10 @@ router.get('/:meetingId/comments', async (req, res) => {
       prisma.comment.findMany({
         where: {
           meetingId: Number(meetingId),
-          parentId: null,
         },
         include: {
           user: {
             select: { id: true, nickname: true, profileUrl: true },
-          },
-          replies: {
-            where: { isDeleted: false },
-            include: {
-              user: {
-                select: { id: true, nickname: true, profileUrl: true },
-              },
-              _count: { select: { likes: true } },
-              ...(currentUserId && {
-                likes: { where: { userId: currentUserId }, select: { userId: true } },
-              }),
-            },
           },
           _count: { select: { likes: true } },
           ...(currentUserId && {
@@ -128,22 +115,7 @@ router.get('/:meetingId/comments', async (req, res) => {
       isLiked: currentUserId ? (comment.likes?.length ?? 0) > 0 : false,
       isHostComment: meeting ? comment.userId === meeting.hostId : false,
       isMine: currentUserId ? comment.userId === currentUserId : false,
-      replies: comment.replies.map((reply) => ({
-        id: reply.id,
-        parentId: reply.parentId,
-        content: reply.content,
-        isDeleted: reply.isDeleted,
-        createdAt: reply.createdAt,
-        author: {
-          nickname: reply.user.nickname,
-          profileUrl: reply.user.profileUrl,
-        },
-        likeCount: reply._count.likes,
-        isLiked: currentUserId ? (reply.likes?.length ?? 0) > 0 : false,
-        isHostComment: meeting ? reply.userId === meeting.hostId : false,
-        isMine: currentUserId ? reply.userId === currentUserId : false,
-        replies: [],
-      })),
+      replies: [],
     }));
 
     res.status(200).json(result);
