@@ -1,26 +1,39 @@
 # sosoeat-comment-server
 
-소소잇 댓글 서버 - Express + Prisma + Supabase
+소소잇 댓글 서버 — Express + Prisma + Supabase
 
 ---
 
-## 사용 목적
+## 개요
 
-모임 상세 페이지 하단 댓글 섹션에 사용됩니다.
-기존 백엔드 API에 댓글 기능이 포함되어 있지 않아 Express 서버를 별도로 구성하였으며,
-기존 백엔드와 새 댓글 서버, 총 두 개의 서버를 함께 사용합니다.
+모임 상세 페이지 하단 댓글 섹션을 위한 별도 서버입니다.  
+기존 백엔드 API에 댓글 기능이 포함되어 있지 않아 Express 서버를 독립적으로 구성하였습니다.
 
 ---
 
-## 댓글 서버 구현 방식 선택 과정
+## 기술 스택
 
-댓글 서버를 구성하기 위해 아래 세 가지 방식을 검토했습니다.
+| 항목 | 기술 |
+|---|---|
+| Runtime | Node.js |
+| Framework | Express |
+| ORM | Prisma 5 |
+| Database | Supabase (PostgreSQL) |
+| 배포 | Railway |
 
-### 1안. Supabase만 사용
+---
 
-Supabase RLS(Row Level Security)로 인증을 처리하는 방식입니다.
-그러나 Supabase는 자신이 발급한 JWT를 기준으로 유저를 식별하는데,
-소소잇의 JWT는 Spring Boot 메인 백엔드가 발급하며, 실제 페이로드 구조는 아래와 같습니다.
+## 별도 서버를 구성한 이유
+
+### 배경
+
+댓글은 로그인한 사용자만 작성할 수 있어야 했습니다. 토큰 검증을 위해 메인 백엔드의 Secret Key가 필요했지만, 해당 키는 백엔드 서버에만 존재했고 프론트엔드 레포에서는 접근이 불가능했습니다. 허용된 수단은 메인 백엔드 API 호출뿐이었기 때문에, 메인 백엔드에 검증을 위임하는 프록시 구조가 필요했습니다.
+
+### 방식 검토
+
+**1안 — Supabase Auth 단독**
+
+Supabase RLS로 인증을 처리하는 방식입니다. 이론적으로는 Spring Boot의 JWT Secret을 Supabase에 등록하면 서명 검증이 가능하지만, 실제 JWT 페이로드를 확인했을 때 구조적인 문제가 있었습니다.
 
 ```json
 {
@@ -32,36 +45,35 @@ Supabase RLS(Row Level Security)로 인증을 처리하는 방식입니다.
 
 | 문제 | 설명 |
 |---|---|
-| `sub`가 숫자 | Supabase는 UUID 형식을 기대하므로 `auth.uid()`가 `null` 반환 → 소유권 검증 불가 |
+| `sub`가 숫자 ID | Supabase는 UUID 형식을 기대하므로 `auth.uid()`가 `null` 반환 → 소유권 검증 불가 |
 | `role` 필드 없음 | Supabase는 `"authenticated"` 값을 요구하므로 RLS 자체가 동작하지 않음 |
 
-`sub`를 UUID로 맞추려면 Spring Boot DB 스키마 변경, 기존 토큰 전부 무효화, 전체 인증 로직 수정이 필요했습니다.
-댓글 서버 하나를 위해 메인 백엔드 전체를 건드리는 것은 영향 범위가 너무 컸습니다.
+`sub`를 UUID로 맞추려면 Spring Boot DB 스키마 변경, 기존 토큰 전부 무효화, 전체 인증 로직 수정이 필요합니다. 댓글 서버 하나를 위해 메인 백엔드 전체를 건드리는 것은 영향 범위가 너무 컸습니다.
 
-→ **탈락**: 어떤 방법을 써도 결국 JWT를 직접 검증하는 로직이 필요했습니다.
+→ **탈락**: 어떤 방법을 써도 JWT를 직접 검증하는 로직이 별도로 필요했습니다.
 
 ---
 
-### 2안. Next.js Route Handler 사용
+**2안 — Next.js Route Handler + Supabase DB**
 
-프론트 프로젝트 내 `/app/api/` 폴더에 Route Handler로 댓글 API를 구성하는 방식입니다.
-기술적으로는 가능하지만 아래 이유로 탈락했습니다.
+프론트 프로젝트 내 `/app/api/`에 Route Handler로 댓글 API를 구성하는 방식입니다. 기술적으로는 가능하지만 아래 이유로 탈락했습니다.
 
 | 문제 | 설명 |
 |---|---|
-| 프론트/백엔드 코드 혼재 | 팀원 5명이 같은 레포에서 작업하므로 PR 관리가 복잡해짐 |
+| 서버리스 환경 | Vercel 서버리스는 요청마다 함수가 새로 실행되어 Prisma 사용 시 요청마다 DB 커넥션을 새로 맺음 → 트래픽이 몰릴 경우 커넥션 풀 고갈 위험 |
 | 배포 의존성 | Vercel 배포를 직접 관리하지 않아 테스트할 때마다 타 팀원에게 의존해야 함 |
-| 독립 배포 불가 | 댓글 기능만 따로 배포·테스트하는 것이 불가능함 |
-| 로그 혼재 | Next.js 서버는 서버리스 환경으로 프론트 로그와 API 로그가 섞임 |
+| 코드 혼재 | 팀원 5명이 같은 레포에서 작업하므로 PR 관리가 복잡해짐 |
+| 로그 혼재 | 프론트 로그와 API 로그가 섞여 디버깅이 어려움 |
 
-→ **탈락**: 팀 협업 구조와 배포 환경에 맞지 않았습니다.
+→ **탈락**: 서버리스 환경의 DB 커넥션 문제와 팀 협업 구조에 맞지 않았습니다.
 
 ---
 
-### 3안. Express 별도 서버 (Railway) ✅ 채택
+**3안 — Railway Express 별도 서버 ✅ 채택**
 
 | 이유 | 설명 |
 |---|---|
+| 안정적인 DB 커넥션 | 항상 떠있는 서버이므로 Prisma DB 커넥션을 안정적으로 유지 |
 | 배포 독립성 | Railway에 직접 배포하고 즉시 테스트 가능 |
 | 코드 분리 | 프론트 레포와 완전히 분리되어 팀 협업 영향 없음 |
 | 로그 분리 | Railway 대시보드에서 댓글 서버 로그만 독립적으로 확인 가능 |
@@ -69,60 +81,21 @@ Supabase RLS(Row Level Security)로 인증을 처리하는 방식입니다.
 
 ---
 
-## 왜 Supabase만 쓰지 않고 Express 서버를 구성했나요?
+## 인증 방식
 
-Supabase를 DB로 사용하면서 **왜 Supabase RLS만으로 인증을 처리하지 않았는지** 설명합니다.
+프론트엔드는 BFF(Backend-for-Frontend) 패턴을 사용합니다.  
+`accessToken`은 httpOnly 쿠키에만 존재하며 클라이언트 JS에서 접근이 불가능합니다.
 
-### Supabase RLS의 한계
+인증이 필요한 요청은 반드시 **Next.js Route Handler를 경유**해야 합니다.  
+Route Handler에서 `CookieStorage`를 통해 쿠키의 `accessToken`을 읽어 `Authorization` 헤더에 담아 댓글 서버로 전달합니다.
 
-Supabase의 RLS(Row Level Security)는 **Supabase Auth가 발급한 JWT**를 기준으로 유저를 식별합니다.
-소소잇의 JWT는 **Spring Boot 메인 백엔드**가 발급하기 때문에, Supabase 입장에서는 신뢰할 수 없는 외부 토큰입니다.
-
-이론적으로는 Supabase에 Spring Boot의 JWT Secret을 등록하면 서명 검증이 가능합니다.
-그러나 실제 JWT 페이로드를 확인했을 때 아래와 같은 구조적 문제가 있었습니다.
-
-```json
-{
-  "sub": 1398,
-  "teamId": "sosoeattest",
-  "email": "test@example.com",
-  "iat": 1775202989,
-  "exp": 1775203889
-}
 ```
-
-| 문제 | 설명 |
-|---|---|
-| `sub`가 숫자 ID | Supabase는 UUID 형식을 기대하므로 `auth.uid()`가 `null` 반환 → 소유권 검증 불가 |
-| `role` 필드 없음 | Supabase는 `"authenticated"` 값을 요구하므로 RLS 자체가 동작하지 않음 |
-
-### 미들웨어로 role을 주입하면 안 되나요?
-
-JWT 검증 후 유효한 유저에게만 `authenticated`를 주입하는 방식도 고려했습니다.
-하지만 `sub`가 숫자인 문제는 JWT 자체를 수정하지 않는 이상 해결이 불가능합니다.
-`auth.uid() = null` 상태에서는 **"로그인은 했지만 누군지 모른다"** 상태가 되어,
-"본인 댓글만 수정/삭제" 같은 소유권 기반 정책이 동작하지 않습니다.
-
-### sub를 UUID로 맞추면 되지 않나요?
-
-가능하지만 Spring Boot의 DB 스키마 변경, 기존 발급된 토큰 전부 무효화, 전체 인증 로직 수정이 필요합니다.
-댓글 서버 하나를 위해 메인 백엔드 전체를 건드리는 것은 영향 범위가 너무 컸습니다.
-
-### 결론
-
-어떤 방법을 써도 결국 JWT를 직접 검증하는 로직을 어딘가에 작성해야 했습니다.
-Supabase 내부에서 SQL(PostgreSQL 함수)로 작성하는 것보다,
-팀이 익숙한 TypeScript로 `verifyMember` 미들웨어를 작성하는 것이 현실적이고 유지보수하기 좋은 선택이었습니다.
-
----
-
-## 기술 스택
-
-- **Runtime**: Node.js
-- **Framework**: Express
-- **ORM**: Prisma 5
-- **Database**: Supabase (PostgreSQL)
-- **배포**: Railway
+브라우저
+  → Next.js Route Handler (CookieStorage로 accessToken 읽어 Authorization 헤더 삽입)
+  → 댓글 서버 (verifyMember 미들웨어에서 토큰 검증)
+  → 메인 백엔드 API (GET /{teamId}/users/me 호출로 토큰 유효성 확인)
+  → Supabase DB
+```
 
 ---
 
@@ -151,39 +124,20 @@ Supabase 내부에서 SQL(PostgreSQL 함수)로 작성하는 것보다,
 
 ## 데이터 흐름
 
-### 1. 모임 생성/삭제
+### 모임 생성/삭제 동기화
 
-기존 백엔드 호출이 우선입니다. 새 서버는 댓글 기능을 위한 동기화 용도로만 사용합니다.
-기존 백엔드 성공 후 새 서버에 동기화하며, 동기화 실패 시에도 모임 생성/삭제 자체는 성공으로 처리합니다.
+기존 백엔드 호출이 우선입니다. 기존 백엔드 성공 후 댓글 서버에 동기화하며, 동기화 실패 시에도 모임 생성/삭제 자체는 성공으로 처리합니다.
 
-### 2. 댓글 작성
+### 댓글 작성
 
-1. `verifyMember` 미들웨어 → 기존 백엔드 `GET /{teamId}/users/me` 호출로 토큰 유효성 검증
+1. `verifyMember` 미들웨어 → 메인 백엔드 `GET /{teamId}/users/me` 호출로 토큰 유효성 검증
 2. `ensureMeeting` 미들웨어 → Meeting upsert (동기화 누락 보완)
 3. User upsert (없으면 insert, 있으면 skip)
 4. Comment insert
 
----
+### 동기화 실패 보완
 
-## 인증 방식
-
-프론트엔드는 BFF(Backend-for-Frontend) 패턴을 사용합니다.
-`accessToken`은 httpOnly 쿠키에만 존재하며 클라이언트 JS에서 접근이 불가능합니다.
-
-댓글 서버로의 인증이 필요한 요청은 반드시 **Next.js Route Handler를 경유**해야 합니다.
-Route Handler에서 `CookieStorage`를 통해 쿠키의 `accessToken`을 읽어 `Authorization` 헤더에 담아 댓글 서버로 전달합니다.
-
-```
-브라우저
-  → Next.js Route Handler (CookieStorage로 accessToken 읽어 Authorization 헤더 삽입)
-  → 댓글 서버 (verifyMember 미들웨어에서 토큰 검증)
-```
-
----
-
-## 동기화 실패 보완 전략
-
-댓글 작성 시점에 `ensureMeeting` 미들웨어가 Meeting upsert를 수행합니다.
+댓글 작성 시점에 `ensureMeeting` 미들웨어가 Meeting upsert를 수행합니다.  
 모임 생성 시 동기화가 실패했더라도 첫 댓글 작성 시 자동으로 복구됩니다.
 
 ---
@@ -191,18 +145,16 @@ Route Handler에서 `CookieStorage`를 통해 쿠키의 `accessToken`을 읽어 
 ## 환경 변수
 
 ```env
-DATABASE_URL=        # Supabase Pooler 연결 문자열 (포트 6543)
-DIRECT_URL=          # Supabase Direct 연결 문자열 (포트 5432)
-MAIN_API_URL=        # 기존 백엔드 API URL
-TEAM_ID=             # 팀 ID
-NEXT_APP_URL=        # Next.js 서버 URL (CORS 허용 대상)
+DATABASE_URL=       # Supabase Pooler 연결 문자열 (포트 6543)
+DIRECT_URL=         # Supabase Direct 연결 문자열 (포트 5432)
+MAIN_API_URL=       # 기존 백엔드 API URL
+TEAM_ID=            # 팀 ID
+NEXT_APP_URL=       # Next.js 서버 URL (CORS 허용 대상)
 ```
 
-### 환경별 NEXT_APP_URL 설정
-
-| 환경 | 값 |
+| 환경 | NEXT_APP_URL |
 |---|---|
-| 로컬 개발 (`.env`) | `http://localhost:3000` |
+| 로컬 개발 | `http://localhost:3000` |
 | Railway 배포 | `https://sosoeat.vercel.app` |
 
 > `.env` 파일은 절대 Git에 커밋하지 않습니다.
@@ -214,11 +166,11 @@ NEXT_APP_URL=        # Next.js 서버 URL (CORS 허용 대상)
 ### 환경 변수 설정
 
 ```env
-# Railway 배포 후 발급된 URL로 고정 (서버 전용, NEXT_PUBLIC 사용 금지)
+# 서버 전용 — NEXT_PUBLIC 사용 금지
 COMMENT_API_URL=https://sosoeat-comment.up.railway.app
 ```
 
-### 인증이 필요 없는 API (댓글 조회)
+### 인증 불필요 API (댓글 조회)
 
 서버 컴포넌트에서 직접 호출 가능합니다.
 
@@ -229,7 +181,7 @@ const res = await fetch(
 const comments = await res.json();
 ```
 
-### 인증이 필요한 API (댓글 작성/수정/삭제)
+### 인증 필요 API (댓글 작성/수정/삭제)
 
 Route Handler를 통해 `CookieStorage`로 토큰을 읽어 댓글 서버로 전달합니다.
 
@@ -256,8 +208,7 @@ export async function POST(
     }
   );
 
-  const data = await res.json();
-  return Response.json(data, { status: res.status });
+  return Response.json(await res.json(), { status: res.status });
 }
 ```
 
@@ -273,27 +224,18 @@ const postComment = async (meetingId: number, content: string, parentId?: number
 };
 ```
 
-### 모임 생성/삭제 시 동기화
-
-기존 백엔드 호출 성공 후 댓글 서버에 동기화합니다.
-동기화 실패 시에도 모임 생성/삭제 자체는 성공으로 처리합니다.
+### 모임 생성/삭제 동기화
 
 ```ts
 // 모임 생성
 const createMeeting = async (formData) => {
-  // 1. 기존 백엔드 먼저
   const meeting = await apiServer.post('/meetings', formData);
 
-  // 2. 댓글 서버 동기화 (실패해도 무시)
   try {
     await fetch(`${process.env.COMMENT_API_URL}/meetings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: meeting.id,
-        hostId: meeting.hostId,
-        teamId: meeting.teamId,
-      }),
+      body: JSON.stringify({ id: meeting.id, hostId: meeting.hostId, teamId: meeting.teamId }),
     });
   } catch (e) {
     console.error('댓글 서버 동기화 실패:', e);
@@ -304,10 +246,8 @@ const createMeeting = async (formData) => {
 
 // 모임 삭제
 const deleteMeeting = async (meetingId: number) => {
-  // 1. 기존 백엔드 먼저
   await apiServer.delete(`/meetings/${meetingId}`);
 
-  // 2. 댓글 서버 동기화 (실패해도 무시)
   try {
     await fetch(`${process.env.COMMENT_API_URL}/meetings/${meetingId}`, {
       method: 'DELETE',
@@ -318,15 +258,12 @@ const deleteMeeting = async (meetingId: number) => {
 };
 ```
 
-### 회원/비회원 판단 (1차 방어)
+### 회원/비회원 판단
 
-댓글 작성 UI는 Zustand `authStore`의 유저 정보 존재 여부로 판단합니다.
-토큰은 httpOnly 쿠키에 있어 클라이언트에서 직접 읽을 수 없으므로, 유저 정보를 기준으로 로그인 상태를 확인합니다.
+댓글 작성 UI는 Zustand `authStore`의 유저 정보 존재 여부로 1차 판단합니다.  
+실제 토큰 유효성 검증(만료 토큰, 탈퇴 유저 등)은 `verifyMember` 미들웨어에서 2차로 처리합니다.
 
 ```ts
 const { user } = useAuthStore();
-
 // user 있으면 댓글 활성화, 없으면 비활성화
 ```
-
-실제 토큰 유효성 검증(만료 토큰, 탈퇴 유저 등)은 댓글 서버의 `verifyMember` 미들웨어에서 2차로 처리합니다.
