@@ -55,7 +55,7 @@ router.get('/:meetingId/comments/count', async (req, res) => {
 
 router.get('/:meetingId/comments', async (req, res) => {
   const { meetingId } = req.params;
-  console.log('meetingId 파라미터:', meetingId, '→ Number:', Number(meetingId));
+  const meetingIdNum = Number(meetingId);
 
   let currentUserId = null;
   const token = req.headers.authorization;
@@ -65,10 +65,8 @@ router.get('/:meetingId/comments', async (req, res) => {
         `${process.env.MAIN_API_URL}/${process.env.TEAM_ID}/users/me`,
         { headers: { Authorization: token } }
       );
-      console.log('users/me status:', response.status);
       if (response.ok) {
         const user = await response.json();
-        console.log('currentUserId:', user.id);
         currentUserId = user.id;
       } else {
         const errBody = await response.text();
@@ -80,73 +78,68 @@ router.get('/:meetingId/comments', async (req, res) => {
   }
 
   try {
-    const [meeting, comments] = await Promise.all([
-      prisma.meeting.findUnique({
-        where: { id: Number(meetingId) },
-      }),
-      prisma.comment.findMany({
-        where: {
-          meetingId: Number(meetingId),
-          parentId: null,
-        },
-        include: {
-          user: {
-            select: { id: true, nickname: true, profileUrl: true },
-          },
-          replies: {
-            where: { isDeleted: false },
-            include: {
-              user: {
-                select: { id: true, nickname: true, profileUrl: true },
-              },
-              _count: { select: { likes: true } },
-              ...(currentUserId && {
-                likes: { where: { userId: currentUserId }, select: { userId: true } },
-              }),
-            },
-          },
-          _count: { select: { likes: true } },
-          ...(currentUserId && {
-            likes: { where: { userId: currentUserId }, select: { userId: true } },
-          }),
-        },
-        orderBy: { createdAt: 'asc' },
-      }),
-    ]);
+    // 댓글 + 작성자 + 모임 주최자 + 좋아요 수 + 내 좋아요 여부를 단일 쿼리로 조회 (N+1 방지)
+    const rows = await prisma.$queryRaw`
+      SELECT
+        c.id,
+        c."parentId",
+        c.content,
+        c."isDeleted",
+        c."createdAt",
+        c."userId",
+        u.nickname AS "userNickname",
+        u."profileUrl" AS "userProfileUrl",
+        m."hostId" AS "meetingHostId",
+        COALESCE(lc.count, 0)::int AS "likeCount",
+        (ul."userId" IS NOT NULL) AS "isLiked"
+      FROM "Comment" c
+      JOIN "User" u ON u.id = c."userId"
+      JOIN "Meeting" m ON m.id = c."meetingId"
+      LEFT JOIN (
+        SELECT "commentId", COUNT(*)::int AS count
+        FROM "CommentLike"
+        GROUP BY "commentId"
+      ) lc ON lc."commentId" = c.id
+      LEFT JOIN "CommentLike" ul ON ul."commentId" = c.id AND ul."userId" = ${currentUserId}
+      WHERE c."meetingId" = ${meetingIdNum}
+        AND (c."parentId" IS NULL OR c."isDeleted" = false)
+      ORDER BY c."createdAt" ASC
+    `;
 
-    const result = comments.map((comment) => ({
-      id: comment.id,
-      parentId: comment.parentId,
-      content: comment.content,
-      isDeleted: comment.isDeleted,
-      createdAt: comment.createdAt,
+    const toDto = (row) => ({
+      id: row.id,
+      parentId: row.parentId,
+      content: row.content,
+      isDeleted: row.isDeleted,
+      createdAt: row.createdAt,
       author: {
-        nickname: comment.user.nickname,
-        profileUrl: comment.user.profileUrl,
+        nickname: row.userNickname,
+        profileUrl: row.userProfileUrl,
       },
-      likeCount: comment._count.likes,
-      isLiked: currentUserId ? (comment.likes?.length ?? 0) > 0 : false,
-      isHostComment: meeting ? comment.userId === meeting.hostId : false,
-      isMine: currentUserId ? comment.userId === currentUserId : false,
-      replies: comment.replies.map((reply) => ({
-        id: reply.id,
-        parentId: reply.parentId,
-        content: reply.content,
-        isDeleted: reply.isDeleted,
-        createdAt: reply.createdAt,
-        author: {
-          nickname: reply.user.nickname,
-          profileUrl: reply.user.profileUrl,
-        },
-        likeCount: reply._count.likes,
-        isLiked: currentUserId ? (reply.likes?.length ?? 0) > 0 : false,
-        isHostComment: meeting ? reply.userId === meeting.hostId : false,
-        isMine: currentUserId ? reply.userId === currentUserId : false,
-        replies: [],
-      })),
-    }));
+      likeCount: row.likeCount,
+      isLiked: currentUserId ? row.isLiked : false,
+      isHostComment: row.userId === row.meetingHostId,
+      isMine: currentUserId ? row.userId === currentUserId : false,
+      replies: [],
+    });
 
-    res.status(200).json(result);
+    const dtoById = new Map();
+    const topLevel = [];
+    for (const row of rows) {
+      const dto = toDto(row);
+      dtoById.set(row.id, dto);
+      if (row.parentId === null) topLevel.push(dto);
+    }
+    // 대댓글까지만 지원 (2depth) — 대댓글의 대댓글은 최상위 댓글에만 연결
+    for (const row of rows) {
+      if (row.parentId === null) continue;
+      const parentRow = dtoById.get(row.parentId);
+      if (parentRow && parentRow.parentId === null) {
+        parentRow.replies.push(dtoById.get(row.id));
+      }
+    }
+
+    res.status(200).json(topLevel);
   } catch (e) {
     console.error('댓글 조회 에러:', e);
     res.status(500).json({ message: '서버 오류' });
